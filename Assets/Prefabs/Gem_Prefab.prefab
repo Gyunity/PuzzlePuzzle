@@ -107,6 +107,12 @@ MonoBehaviour:
   pinkGem: {fileID: 21300000, guid: 5ba810069aa98aa469ceddec74ea7ac9, type: 3}
   purpleGem: {fileID: 21300000, guid: cab497377be1c5d4ba95de77cf9fd536, type: 3}
   yellowGem: {fileID: 21300000, guid: a25c2d3cc4d7d664ca1b5649f96018fd, type: 3}
+  redGemCrush: {fileID: 2800000, guid: b8adee87ebf499144b90450a9c7a7c6f, type: 3}
+  greenGemCrush: {fileID: 2800000, guid: d8e61512cbafd5c4d8784809bed39538, type: 3}
+  orangeGemCrush: {fileID: 2800000, guid: c0aa461217b958548892075aec698332, type: 3}
+  pinkGemCrush: {fileID: 2800000, guid: b4bcc0ac9f0001842aaf006cf1cc98f3, type: 3}
+  purpleGemCrush: {fileID: 2800000, guid: 2637d592c2e45bc41b7d590d8ce3d111, type: 3}
+  yellowGemCrush: {fileID: 2800000, guid: 83e9f08927c569b4e8dd8043fd382358, type: 3}
 --- !u!58 &-6831706884423530253
 CircleCollider2D:
   m_ObjectHideFlags: 0

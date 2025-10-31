@@ -31,17 +31,12 @@ public class InputHandler : MonoBehaviour
 
         if (Input.GetMouseButtonDown(0))
         {
-
             TryPickGemCell(Input.mousePosition, out slectGem);
-            Debug.Log($"slectGem : {slectGem}");
-            Debug.Log($"slectGemDic: {tileBoardManager.GetGemMap(slectGem).GemType}");
-            Debug.Log($"slectGemPos: {tileBoardManager.GetGemMap(slectGem).transform.position}");
         }
         else if (Input.GetMouseButton(0) && slectGem != resetVec)
         {
             if(TryPickGemCell(Input.mousePosition, out swapGem))
             {
-            //Debug.Log($"Ω∫ø“¿Î:{swapGem}");
             tileBoardManager.TrySwap(slectGem, swapGem);
             SlectedReset();
 
@@ -74,7 +69,7 @@ public class InputHandler : MonoBehaviour
             }
         }
         gem = null;
-        cell = default;
+        cell = resetVec;
         return false;
     }
     private void SlectedReset()

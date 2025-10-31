@@ -16,7 +16,11 @@ public class Gem : MonoBehaviour
     [SerializeField]
     private Sprite yellowGem;
 
+   
+
     public GemType GemType { get; private set; }
+
+    public Texture GemTexture { get; private set; }
 
     private SpriteRenderer spriteRenderer;
 
@@ -43,4 +47,7 @@ public class Gem : MonoBehaviour
             GemType.Yellow => yellowGem
         };
     }
+ 
+
+
 }

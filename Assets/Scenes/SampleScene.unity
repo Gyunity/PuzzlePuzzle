@@ -2259,6 +2259,8 @@ MonoBehaviour:
   gemFactory: {fileID: 830733332}
   tileMatchFinder: {fileID: 330940644}
   gemsRoot: {fileID: 896530609}
+  gemCrush: {fileID: 1129813083377094, guid: df0e3d4335a7a1b489e90564f4f5a380, type: 3}
+  gemMaterial: {fileID: 2100000, guid: 9399ecc818c8c3f4eba36589aefd32ec, type: 2}
   moveCheck: 1
 --- !u!4 &1295797429
 Transform:

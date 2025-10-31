@@ -2,11 +2,17 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using UnityEditorInternal;
 using UnityEngine;
 using UnityEngine.Tilemaps;
-
+using UnityEngine.UIElements;
+using static UnityEditor.Searcher.SearcherWindow;
 public class TileBoardManager : MonoBehaviour
 {
+    // t=[0,1]에서 이징 함수들
+    private static float EaseInQuad(float t) => t * t;
+    private static float EaseOutQuad(float t) => t * (2f - t);
+
 
     [SerializeField]
     private Tilemap tilemap;
@@ -16,12 +22,18 @@ public class TileBoardManager : MonoBehaviour
     private TileMatchFinder tileMatchFinder;
     [SerializeField]
     private Transform gemsRoot;
+    [SerializeField]
+    private GameObject gemCrush;
+    [SerializeField]
+    private Material gemMaterial;
 
     private Dictionary<Vector3Int, Gem> gemMap = new Dictionary<Vector3Int, Gem>();
 
 
     private GemType[] allTypes;
     public bool moveCheck = true;
+
+    private bool _isResolving;
 
     private void Start()
     {
@@ -30,10 +42,8 @@ public class TileBoardManager : MonoBehaviour
     }
 
 
-    public Gem GetGemMap(Vector3Int cell)
-    {
-       return gemMap[cell];
-    }
+    public Gem GetGemMap(Vector3Int cell) => gemMap[cell];
+
     //타일맵에 있는 자리들을 바탕으로 Gem을 생성하고 Type를 랜덤으로 부여한다.
     //gemMap에 cell(Vector3Int)을 키로하여 Gem을 넣는다.
     private void InitializeBoard()
@@ -43,6 +53,8 @@ public class TileBoardManager : MonoBehaviour
         foreach (var p in bounds.allPositionsWithin)
             if (tilemap.HasTile(p))
                 positions.Add(p);
+
+        // 아래→위(x 오름차순), 같은 줄은 좌→우(y 오름차순)
 
         positions.Sort((a, b) => a.y != b.y ? a.y.CompareTo(b.y) : a.x.CompareTo(b.x));
 
@@ -103,148 +115,92 @@ public class TileBoardManager : MonoBehaviour
 
         yield return new WaitForSeconds(duration + 0.1f);
 
-       List<Vector3Int> matches = tileMatchFinder.FindMatches(gemMap);
-       if (matches.Count == 0)
-       {
-           (gemMap[cellA], gemMap[cellB]) = (gemMap[cellB], gemMap[cellA]);
+        List<Vector3Int> matches = tileMatchFinder.FindMatches(gemMap);
+        if (matches.Count == 0)
+        {
+            (gemMap[cellA], gemMap[cellB]) = (gemMap[cellB], gemMap[cellA]);
 
-           time = 0f;
-           while (time < duration)
-           {
-               time += Time.deltaTime;
-               float du = Mathf.Clamp01(time / duration);
+            time = 0f;
+            while (time < duration)
+            {
+                time += Time.deltaTime;
+                float du = Mathf.Clamp01(time / duration);
 
-               gemMap[cellA].transform.position = Vector3.LerpUnclamped(startBPos, startAPos, du);
-               gemMap[cellB].transform.position = Vector3.LerpUnclamped(startAPos, startBPos, du);
-               yield return null;
-           }
-           gemMap[cellA].transform.position = startAPos;
-           gemMap[cellB].transform.position = startBPos;
+                gemMap[cellA].transform.position = Vector3.LerpUnclamped(startBPos, startAPos, du);
+                gemMap[cellB].transform.position = Vector3.LerpUnclamped(startAPos, startBPos, du);
+                yield return null;
+            }
+            gemMap[cellA].transform.position = startAPos;
+            gemMap[cellB].transform.position = startBPos;
 
-           if (gemsRoot)
-               gemMap[cellA].transform.SetParent(gemsRoot, worldPositionStays: true);
-           gemMap[cellB].transform.SetParent(gemsRoot, worldPositionStays: true);
-       }
-       ResolveCascades(matches);
+            if (gemsRoot)
+            {
+                gemMap[cellA].transform.SetParent(gemsRoot, worldPositionStays: true);
+                gemMap[cellB].transform.SetParent(gemsRoot, worldPositionStays: true);
+
+            }
+            moveCheck = true;
+            yield break;
+
+        }
+        // 매치 있으면 연쇄 코루틴 완료까지 대기
+        yield return StartCoroutine(Co_ResolveCascades(matches));
         moveCheck = true;
     }
 
 
-    private bool _isResolving;
-
-    private void ResolveCascades(List<Vector3Int> initialMatches = null)
+    private IEnumerator Co_ResolveCascades(List<Vector3Int> initialMatches = null)
     {
-        if (_isResolving) return;        // 재진입 방지(안전)
+        if (_isResolving) yield break;
         _isResolving = true;
 
         var matches = initialMatches ?? tileMatchFinder.FindMatches(gemMap);
 
         while (matches.Count > 0)
         {
-            // 1) 매칭 제거
+            // 1) 파괴
             foreach (var p in matches)
             {
                 var g = gemMap[p];
                 if (g != null)
                 {
                     Destroy(g.gameObject);
+                    GemCrush gemC = Instantiate(gemCrush, g.transform.position, Quaternion.identity).GetComponent<GemCrush>();
+                    gemC.Init(g.GemType);
+                    Destroy(gemC, 0.5f);
                     gemMap[p] = null;
                 }
             }
 
-            // 2) 중력+보충 (열 단위 압축만 사용! ⬇️)
-            ApplyGravityAndRefill();
+            // 2) 0.25s 딜레이 후 낙하+보충 애니메이션
+            yield return StartCoroutine(Co_ApplyGravityAndRefillAnimated(0.25f, 0.08f, true));
 
-            // 3) 다음 연쇄 검사
+            // 3) 다음 매치
             matches = tileMatchFinder.FindMatches(gemMap);
         }
 
         _isResolving = false;
     }
-    private void SnapGemToCell(Gem gem, Vector3Int cell)
+    private IEnumerator Co_ApplyGravityAndRefillAnimated(
+    float delayBeforeFall, float perCellTime, bool alignEnd = true
+)
     {
-        if (!gem) return;
-        gem.transform.position = WorldCenterOf(cell);
-        if (gemsRoot) gem.transform.SetParent(gemsRoot, true);
-    }
-    private void FillEmptyChack()
-    {
-        // 1) 보드 위 모든 유효 셀 수집 (정렬: '아래→위', 그 다음 좌→우)
-        var cells = new List<Vector3Int>();
-        foreach (var p in tilemap.cellBounds.allPositionsWithin)
-            if (tilemap.HasTile(p)) cells.Add(p);
+        if (delayBeforeFall > 0f) yield return new WaitForSeconds(delayBeforeFall);
 
-        // 아래가 -x 이므로 x 오름차순(작은 x가 더 아래), y 오름차순
-        cells.Sort((a, b) => a.x != b.x ? a.x.CompareTo(b.x) : a.y.CompareTo(b.y));
-
-        // 2) 빈칸마다 위쪽에서 가장 가까운 보석을 끌어내려 채운다
-        foreach (var cell in cells)
-        {
-            if (gemMap.TryGetValue(cell, out var here) && here == null)
-            {
-                // 위쪽으로 스캔 (Up = 축0의 forward)
-                var scan = cell;
-                while (true)
-                {
-                    var upDelta = HexDirections.GetAxisDeltas(scan, axis: 0).fwd; // (+1,0,0) 또는 parity에 따른 값
-                    var above = scan + upDelta;
-                    if (!tilemap.HasTile(above)) break;
-
-                    if (gemMap.TryGetValue(above, out var g) && g != null)
-                    {
-                        // 끌어내리기
-                        gemMap[cell] = g;
-                        gemMap[above] = null;
-                        SnapGemToCell(g, cell);
-                        break;
-                    }
-
-                    scan = above;
-                }
-            }
-        }
-
-        // 3) 아직도 비어있는 칸들(맨 위쪽에 남은 빈칸)에 새 보석 생성
-        var empties = cells.Where(c => gemMap[c] == null).ToList();
-        foreach (var cell in empties)
-        {
-            // 즉시 3매치 방지
-            var candidates = new List<GemType>(allTypes);
-            candidates.RemoveAll(t => tileMatchFinder.WouldFormLineOf3At(cell, t, gemMap));
-
-            var chosen = (candidates.Count > 0)
-                ? candidates[UnityEngine.Random.Range(0, candidates.Count)]
-                : allTypes[UnityEngine.Random.Range(0, allTypes.Length)];
-
-            gemMap[cell] = gemFactory.CreateGemOfType(chosen, tilemap, cell, gemsRoot);
-            // 스폰 위치를 '보드 위 한 칸 더 위'에서 떨어뜨리고 싶다면:
-            //   var spawnCell = cell + HexDirections.GetAxisDeltas(cell, 0).fwd;
-            //   gem = gemFactory.CreateGemOfType(chosen, tilemap, spawnCell, gemsRoot);
-            //   gemMap[cell] = gem;  // 이후 DOTween 등으로 cell까지 내려오게 연출
-        }
-    }
-    /// 보드의 모든 열(column, 동일 y)별로 '아래로 압축'하고, 맨 위 빈칸은 새로 스폰
-    private void ApplyGravityAndRefill()
-    {
-        // 1) 유효 셀 수집 및 y(열)별 그룹핑
+        // 1) 유효 셀 모으고 y(열)별, 아래→위(x 오름차순)
         var allCells = new List<Vector3Int>();
         foreach (var p in tilemap.cellBounds.allPositionsWithin)
             if (tilemap.HasTile(p)) allCells.Add(p);
-
-        // y(열) → 그 열의 셀들(아래→위: x 오름차순)로 정렬
         var columns = allCells
-            .GroupBy(c => c.y)
-            .ToDictionary(
-                g => g.Key,
-                g => g.OrderBy(c => c.x).ToList() // x가 작을수록 '아래'
-            );
+        .GroupBy(c => c.y)
+        .ToDictionary(g => g.Key, g => g.OrderBy(c => c.x).ToList());
 
-        // 2) 각 열을 '아래로 압축'
+        // 2) 열 압축: 이동 계획(fallMoves) 만들고, gemMap은 '목적지'로 선갱신
+        var fallMoves = new List<(Gem gem, Vector3Int from, Vector3Int to)>();
         foreach (var kv in columns)
         {
-            var col = kv.Value;        // 아래→위 순
-            int write = 0;             // 다음으로 채울 '아래쪽' 인덱스
-
+            var col = kv.Value; // 아래→위
+            int write = 0;
             for (int read = 0; read < col.Count; read++)
             {
                 var fromCell = col[read];
@@ -253,49 +209,131 @@ public class TileBoardManager : MonoBehaviour
                 var toCell = col[write];
                 if (fromCell != toCell)
                 {
-                    // 이동: 데이터 갱신 + 화면 스냅
+                    fallMoves.Add((g, fromCell, toCell));
                     gemMap[toCell] = g;
                     gemMap[fromCell] = null;
-                    SnapGemToCell(g, toCell);
                 }
                 write++;
             }
-
-            // write ~ 끝까지는 빈칸(null)로 남김 (여기에만 새로 스폰)
-            for (int i = write; i < col.Count; i++)
-                gemMap[col[i]] = null;
+            for (int i = write; i < col.Count; i++) gemMap[col[i]] = null;
         }
 
-        // 3) 맨 위 빈칸만 스폰 (즉시 3매치 방지 포함)
+        // 3) 스폰 계획(spawnMoves)도 같은 타이밍에 계산
+        var spawnMoves = new List<(Gem gem, Vector3Int from, Vector3Int to)>();
         foreach (var kv in columns)
         {
             var col = kv.Value;
-            // 위쪽부터 내려오며 빈칸만 생성 (col은 아래→위 정렬이므로 역순)
             for (int i = col.Count - 1; i >= 0; i--)
             {
                 var cell = col[i];
                 if (gemMap[cell] != null) continue;
 
+                // 즉시 3매치 방지
                 var candidates = new List<GemType>(allTypes);
                 candidates.RemoveAll(t => tileMatchFinder.WouldFormLineOf3At(cell, t, gemMap));
-
                 var chosen = (candidates.Count > 0)
                     ? candidates[UnityEngine.Random.Range(0, candidates.Count)]
                     : allTypes[UnityEngine.Random.Range(0, allTypes.Length)];
 
-                gemMap[cell] = gemFactory.CreateGemOfType(chosen, tilemap, cell, gemsRoot);
+                // 셀 바로 위에서 생성
+                var up = HexDirections.GetAxisDeltas(cell, 0).fwd; // (+1,0,0) 쪽
+                var spawnCell = cell + up;
 
-                // 연출을 원하면: 스폰을 '셀 위'에서 만들고 DOTween 등으로 cell까지 떨어뜨리세요.
-                // var up = HexDirections.GetAxisDeltas(cell, 0).fwd; // (+1,0,0) 쪽 한 칸 위
-                // var spawnCell = cell + up;
-                // var gem = gemFactory.CreateGemOfType(chosen, tilemap, spawnCell, gemsRoot);
-                // gemMap[cell] = gem;
-                // gem.transform.DOMove(WorldCenterOf(cell), 0.15f).SetEase(Ease.InQuad);
+                var gem = gemFactory.CreateGemOfType(chosen, tilemap, spawnCell, gemsRoot);
+                gem.transform.position = WorldCenterOf(spawnCell);
+
+                // 로직상 목적지는 cell
+                gemMap[cell] = gem;
+
+                spawnMoves.Add((gem, spawnCell, cell));
             }
         }
+
+        // 4) 두 리스트를 모두 '동시에' 애니메이션
+        //    - alignEnd=true: 모두 같은 시간 T에 끝남 (delay를 주입)
+        //    - alignEnd=false: 모두 동시에 시작, 거리 비례 시간 (속도 일정)
+        int DistanceInCells(Vector3Int a, Vector3Int b) => Mathf.Abs(a.x - b.x); // 우리 중력축이 x이므로
+
+        int maxDist = 1;
+        foreach (var m in fallMoves) maxDist = Mathf.Max(maxDist, DistanceInCells(m.from, m.to));
+        foreach (var m in spawnMoves) maxDist = Mathf.Max(maxDist, DistanceInCells(m.from, m.to));
+
+        float T = maxDist * perCellTime;
+
+        var batch = new List<(Transform tr, Vector3 start, Vector3 end, float delay, float duration)>();
+
+        // 기존 낙하
+        foreach (var m in fallMoves)
+        {
+            int d = DistanceInCells(m.from, m.to);
+            float dur = Mathf.Max(0.0001f, d * perCellTime);
+            float delay = alignEnd ? (T - dur) : 0f;
+
+            batch.Add((
+                m.gem.transform,
+                m.gem.transform.position,
+                WorldCenterOf(m.to),
+                delay,
+                dur
+            ));
+        }
+
+        // 스폰 낙하
+        foreach (var m in spawnMoves)
+        {
+            int d = DistanceInCells(m.from, m.to);
+            float dur = Mathf.Max(0.0001f, d * perCellTime);
+            float delay = alignEnd ? (T - dur) : 0f;
+
+            batch.Add((
+                m.gem.transform,
+                WorldCenterOf(m.from),
+                WorldCenterOf(m.to),
+                delay,
+                dur
+            ));
+        }
+
+        // 동시에 실행 (fall+spawn 모두)
+        // 끝을 맞추고 싶으면 EaseInQuad, 시작을 맞추고 싶으면 EaseOutQuad가 보기 좋음
+        yield return StartCoroutine(AnimateMoveBatch(batch, EaseInQuad));
     }
-    public bool TryGetGemAtCell(Vector3Int cell, out Gem gem)
+
+    private IEnumerator AnimateMoveBatch(
+    List<(Transform tr, Vector3 start, Vector3 end, float delay, float duration)> batch,
+    Func<float, float> ease
+)
     {
-        return gemMap.TryGetValue(cell, out gem) && gem != null;
+        if (batch.Count == 0) yield break;
+
+        // 개별 타이머
+        var timers = new Dictionary<Transform, float>(batch.Count);
+        foreach (var b in batch) { timers[b.tr] = -b.delay; }
+
+        bool allDone = false;
+        while (!allDone)
+        {
+            allDone = true;
+            foreach (var b in batch)
+            {
+                float t = timers[b.tr];
+                t += Time.deltaTime;
+                timers[b.tr] = t;
+
+                if (t < 0f) { allDone = false; continue; }                  // delay 대기
+                if (t < b.duration)
+                {
+                    float u = Mathf.Clamp01(t / b.duration);
+                    float e = ease(u);
+                    b.tr.position = Vector3.LerpUnclamped(b.start, b.end, e);
+                    allDone = false;
+                }
+                else
+                {
+                    b.tr.position = b.end; // 종료 스냅
+                }
+            }
+            yield return null;
+        }
     }
 }
