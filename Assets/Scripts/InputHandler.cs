@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SocialPlatforms.Impl;
 using UnityEngine.Tilemaps;
 
 public class InputHandler : MonoBehaviour
@@ -17,11 +18,10 @@ public class InputHandler : MonoBehaviour
     private Vector3Int slectGem;
     private Vector3Int swapGem;
 
-    private Vector3Int resetVec = new Vector3Int(99999,9999,9999);
+    private Vector3Int resetVec = new Vector3Int(99999, 9999, 9999);
 
     private void Start()
     {
-       SlectedReset();
     }
 
     void Update()
@@ -32,19 +32,25 @@ public class InputHandler : MonoBehaviour
         if (Input.GetMouseButtonDown(0))
         {
             TryPickGemCell(Input.mousePosition, out slectGem);
+            Debug.Log(slectGem);
         }
         else if (Input.GetMouseButton(0) && slectGem != resetVec)
         {
-            if(TryPickGemCell(Input.mousePosition, out swapGem))
+            if (TryPickGemCell(Input.mousePosition, out swapGem))
             {
-            tileBoardManager.TrySwap(slectGem, swapGem);
-            SlectedReset();
+                foreach (var n in tileBoardManager.Neighbor6(slectGem))
+                {
+                    if (n == swapGem)
+                    {
+                        tileBoardManager.TrySwap(slectGem, swapGem);
+                    }
+                }
 
             }
         }
     }
 
-   
+
 
     private Vector3 ScreenToWorldOnTilePlane(Vector3 screenPos)
     {
@@ -56,7 +62,7 @@ public class InputHandler : MonoBehaviour
     {
         Gem gem;
         Vector3 world = ScreenToWorldOnTilePlane(screenPos);
-        var col = Physics2D.OverlapPoint(world, gemLayer); 
+        var col = Physics2D.OverlapPoint(world, gemLayer);
         if (col)
         {
             gem = col.GetComponentInParent<Gem>();
@@ -72,10 +78,5 @@ public class InputHandler : MonoBehaviour
         cell = resetVec;
         return false;
     }
-    private void SlectedReset()
-    {
-        slectGem = resetVec;
-        swapGem = resetVec;
 
-    }
 }

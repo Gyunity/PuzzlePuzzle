@@ -5,6 +5,7 @@ using UnityEngine;
 
 public class TileMatchFinder : MonoBehaviour
 {
+    public System.Func<Vector3Int, bool> IsBlocked;
 
     public List<Vector3Int> FindMatches(Dictionary<Vector3Int, Gem> gemMap)
     {
@@ -12,6 +13,7 @@ public class TileMatchFinder : MonoBehaviour
 
         foreach (var kv in gemMap)
         {
+
             var pos = kv.Key;
             var gem = kv.Value;
             if (gem == null) continue;
@@ -27,7 +29,7 @@ public class TileMatchFinder : MonoBehaviour
                 {
                     var delta = HexDirections.GetAxisDeltas(p, axis).fwd;
                     p += delta;
-                    if (!gemMap.TryGetValue(p, out var g) || g == null || g.GemType != gem.GemType) break;
+                    if (IsBlocked != null && IsBlocked(p) || !gemMap.TryGetValue(p, out var g) || g == null || g.GemType != gem.GemType) break;
                     line.Add(p);
                 }
 
@@ -41,6 +43,7 @@ public class TileMatchFinder : MonoBehaviour
                     line.Add(p);
                 }
 
+                
                 if (line.Count >= 3)
                     foreach (var c in line) result.Add(c);
             }
@@ -51,9 +54,12 @@ public class TileMatchFinder : MonoBehaviour
 
     public bool WouldFormLineOf3At(Vector3Int pos, GemType t, IDictionary<Vector3Int, Gem> gemMap)
     {
+        if (IsBlocked != null && IsBlocked(pos)) return false;
+
         // 3개 축 중 하나라도 3이상 이어지면 true
         for (int axis = 0; axis < 3; axis++)
         {
+
             int count = 1;
 
             // +쪽
