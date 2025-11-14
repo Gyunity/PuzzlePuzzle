@@ -38,6 +38,11 @@ MonoBehaviour:
     - {fileID: 8300000, guid: e5eeafa5442eb7546a3902625b7ee4e0, type: 3}
     vol: 0.528
     pitch: 1
+  - id: 10
+    clips:
+    - {fileID: 8300000, guid: eb27913cae9dc19409419b5673578011, type: 3}
+    vol: 0.528
+    pitch: 1
   bgm:
   - id: 0
     clip: {fileID: 8300000, guid: 05db6758f1dbab4418358dea0d9ce5c7, type: 3}

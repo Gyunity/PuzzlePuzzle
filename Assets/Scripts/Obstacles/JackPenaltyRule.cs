@@ -8,7 +8,7 @@ public class JackPenaltyRule : MonoBehaviour, IDestructionListener
     private MonoBehaviour boardRef;
     [SerializeField]
     private MonoBehaviour scoreRef;
-    [SerializeField] 
+    [SerializeField]
     private JackPenaltyFlyVFX vfx;
     [SerializeField] private JackFactory jackFactory;
 
@@ -66,16 +66,7 @@ public class JackPenaltyRule : MonoBehaviour, IDestructionListener
         // 1) 잭 본체 Hit
         foreach (var jc in touchedJacks)
         {
-            if (_jackByCell.TryGetValue(jc, out var jv) && jv != null)
-            {
-                jv.PlayHit();
-                Debug.Log($"Hit Jack at {jc}");
-            }
-            else
-            {
-                // ★ 매핑 안 잡힌 경우를 잡아내는 로그(좌표가 다르거나 등록 실패)
-                Debug.LogWarning($"No JackVisuals mapped for cell {jc}");
-            }
+            SoundManager.I.PlaySfx(SfxId.JackFly);
         }
 
         // 2) 토큰 날리고 도착 시 감점

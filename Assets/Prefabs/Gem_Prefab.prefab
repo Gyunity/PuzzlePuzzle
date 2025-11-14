@@ -102,12 +102,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 45f529568d75db4428685e3a07791ccb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  redGem: {fileID: 21300000, guid: 8d61186d015c0b24b9de5df06b83418d, type: 3}
-  greenGem: {fileID: 21300000, guid: 24f8c355e98a38c4fa27787e013d22b0, type: 3}
-  orangeGem: {fileID: 21300000, guid: 249bfa095fbc0cc4facc3d48713e1eb2, type: 3}
-  pinkGem: {fileID: 21300000, guid: 5ba810069aa98aa469ceddec74ea7ac9, type: 3}
-  purpleGem: {fileID: 21300000, guid: cab497377be1c5d4ba95de77cf9fd536, type: 3}
-  yellowGem: {fileID: 21300000, guid: a25c2d3cc4d7d664ca1b5649f96018fd, type: 3}
+  redGem: {fileID: 480656610, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
+  greenGem: {fileID: 1725891606, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
+  orangeGem: {fileID: 1917985782, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
+  pinkGem: {fileID: -1277623709, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
+  purpleGem: {fileID: -247085439, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
+  yellowGem: {fileID: -1618306094, guid: 463b5493ad640e64888e2c10b020b8d4, type: 3}
   speEffect: {fileID: 3331056715998424716}
 --- !u!58 &-6831706884423530253
 CircleCollider2D:

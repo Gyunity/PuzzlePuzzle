@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using TMPro;
 using UnityEngine;
 using UnityEngine.Tilemaps;
 using UnityEngine.UIElements;
@@ -48,6 +49,9 @@ public class TileBoardManager : MonoBehaviour, IBoardReadonly
     [SerializeField]
     private List<MonoBehaviour> destructionListenerRefs = new();
     private readonly List<IDestructionListener> _destructionListeners = new();
+
+    [SerializeField]
+    private TMP_Text rematch_Text;
     private void Awake()
     {
         blockers = new HashSet<Vector3Int>(blockerCells);
@@ -61,8 +65,10 @@ public class TileBoardManager : MonoBehaviour, IBoardReadonly
 
     private void Start()
     {
+        
         allTypes = (GemType[])Enum.GetValues(typeof(GemType));
         tileMatchFinder.IsBlocked = IsBlocked;
+        rematch_Text.gameObject.SetActive(false);
         InitializeBoard();
         SoundManager.I.PlayBgm(BgmId.Stage, 1.0f);
         SoundManager.I.PlaySfx(SfxId.Start);
@@ -210,8 +216,103 @@ public class TileBoardManager : MonoBehaviour, IBoardReadonly
         yield return StartCoroutine(Co_ResolveCascades(matches));
         moveCheck = true;
     }
+    private IEnumerator Co_MaybeShuffleIfStuck()
+    {
+        // 즉시 매치가 있으면(= 방금 생성된 것 포함) 셔플할 필요 없음
+        if (tileMatchFinder.FindMatches(gemMap).Count > 0)
+            yield break;
 
+        // 스왑 가능한 힌트가 있는지 검사
+        if (TryFindHintDetailed(out _, out _, out _, out _))
+            yield break;
 
+        // 진짜 막혔다 → 셔플
+        yield return StartCoroutine(Co_ShuffleBoardAnimated(0.7f));
+    }
+    // 보드 전체를 ‘재배치’한다. 즉시 매치가 없고, 최소 1개 스왑 가능(힌트 존재)을 만족할 때까지 시도.
+    // 성공하면 각 젬을 새 셀로 부드럽게 이동시킨다.
+    private IEnumerator Co_ShuffleBoardAnimated(float moveDuration)
+    {
+        rematch_Text.gameObject.SetActive(true);
+        yield return new WaitForSeconds(1f);
+        moveCheck = false;
+
+        // 1) 플레이 가능한 셀 목록(타일 O, 블로커 X, 젬 O)
+        var cells = new List<Vector3Int>();
+        var gems = new List<Gem>();
+        foreach (var p in tilemap.cellBounds.allPositionsWithin)
+        {
+            if (!tilemap.HasTile(p) || IsBlocked(p)) continue;
+            if (gemMap.TryGetValue(p, out var g) && g != null)
+            {
+                cells.Add(p);
+                gems.Add(g);
+            }
+        }
+
+        if (cells.Count <= 1) { moveCheck = true; yield break; }
+
+        // 2) 현재 매핑 스냅샷(롤백 대비)
+        var oldMap = new Dictionary<Vector3Int, Gem>(cells.Count);
+        foreach (var c in cells) oldMap[c] = gemMap[c];
+
+        // 3) 조건 만족하는 배치를 찾는다 (최대 N회)
+        const int MAX_TRIES = 80;
+        bool ok = false;
+        var rng = new System.Random();
+
+        for (int tryNo = 0; tryNo < MAX_TRIES && !ok; tryNo++)
+        {
+            // Fisher-Yates 섞기
+            for (int i = gems.Count - 1; i > 0; --i)
+            {
+                int j = rng.Next(i + 1);
+                (gems[i], gems[j]) = (gems[j], gems[i]);
+            }
+
+            // 임시로 gemMap 재배치(트랜스폼은 아직 안 옮김)
+            for (int i = 0; i < cells.Count; i++)
+                gemMap[cells[i]] = gems[i];
+
+            // 즉시 매치가 없어야 함
+            if (tileMatchFinder.FindMatches(gemMap).Count != 0)
+                continue;
+
+            // 최소 한 개의 스왑 힌트가 있어야 함
+            if (!TryFindHintDetailed(out _, out _, out _, out _))
+                continue;
+
+            ok = true;
+        }
+
+        if (!ok)
+        {
+            // 실패: 롤백 후(안전) 최후 수단으로 보드를 새로 깔아도 되지만 여기선 롤백만.
+            foreach (var kv in oldMap) gemMap[kv.Key] = kv.Value;
+            moveCheck = true;
+            yield break;
+        }
+
+        // 4) 애니메이션으로 부드럽게 이동
+        var batch = new List<(Transform tr, Vector3 start, Vector3 end, float delay, float duration)>(cells.Count);
+        for (int i = 0; i < cells.Count; i++)
+        {
+            var cell = cells[i];
+            var g = gemMap[cell];
+            var tr = g.transform;
+            var start = tr.position;
+            var end = WorldCenterOf(cell);
+            batch.Add((tr, start, end, 0f, moveDuration));
+        }
+
+        // 효과음(선택)
+        //SoundManager.I?.PlaySfx(SfxId.Shuffle, 1f, 1f);
+
+        yield return StartCoroutine(AnimateMoveBatch(batch, EaseInQuad));
+        moveCheck = true;
+        rematch_Text.gameObject.SetActive(false);
+
+    }
     //gemMap을 스캔하여 3개 이상의 Gem을 찾고 파괴한다음 채움
     private IEnumerator Co_ResolveCascades(List<Vector3Int> initialMatches = null)
     {
@@ -265,6 +366,8 @@ public class TileBoardManager : MonoBehaviour, IBoardReadonly
             //또 매치된게 있는지 봄
             matches = tileMatchFinder.FindMatches(gemMap);
         }
+        yield return StartCoroutine(Co_MaybeShuffleIfStuck());
+
         _lastSwapAxis = -1; // 끝난 뒤 초기화
         _isResolving = false;
     }
